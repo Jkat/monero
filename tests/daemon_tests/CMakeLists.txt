@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2016, The Monero Project
+# Copyright (c) 2014-2020, The Monero Project
 #
 # All rights reserved.
 #
@@ -39,7 +39,7 @@ target_link_libraries(transfers
     useragent
     rpc
     cryptonote_core
-    crypto
+    cncrypto
     common
     epee
     ${GTEST_LIBRARIES})

@@ -173,7 +173,7 @@ namespace net_utils
 						stop_handling = true;
 						return false;
 					default:
-						LOG_ERROR("Error in munin state machine! Unkonwon state=" << m_machine_state);
+						LOG_ERROR("Error in munin state machine! Unknown state=" << m_machine_state);
 						stop_handling = true;
 						m_machine_state = http_state_error;
 						return false;
@@ -237,7 +237,7 @@ namespace net_utils
 						return send_hook("Unknown command. Try list, nodes, config, fetch, version or quit\n");
 				}
 
-				return send_hook("Unknown command. Try list, nodes, config, fetch, version or quit\n");;
+				return send_hook("Unknown command. Try list, nodes, config, fetch, version or quit\n");
 			}
 
 			bool handle_list_command()

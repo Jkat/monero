@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2016, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -28,10 +28,13 @@
 
 #pragma once
 
+#include "blocks/blocks.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
 #include "misc_log_ex.h"
-#include "daemon/command_line_args.h"
+
+#undef MONERO_DEFAULT_LOG_CATEGORY
+#define MONERO_DEFAULT_LOG_CATEGORY "daemon"
 
 namespace daemonize
 {
@@ -42,7 +45,6 @@ public:
   static void init_options(boost::program_options::options_description & option_spec)
   {
     cryptonote::core::init_options(option_spec);
-    cryptonote::miner::init_options(option_spec);
   }
 private:
   typedef cryptonote::t_cryptonote_protocol_handler<cryptonote::core> t_protocol_raw;
@@ -57,6 +59,18 @@ public:
     : m_core{nullptr}
     , m_vm_HACK{vm}
   {
+    //initialize core here
+    MGINFO("Initializing core...");
+#if defined(PER_BLOCK_CHECKPOINT)
+    const cryptonote::GetCheckpointsCallback& get_checkpoints = blocks::GetCheckpointsData;
+#else
+    const cryptonote::GetCheckpointsCallback& get_checkpoints = nullptr;
+#endif
+    if (!m_core.init(m_vm_HACK, nullptr, get_checkpoints))
+    {
+      throw std::runtime_error("Failed to initialize core");
+    }
+    MGINFO("Core initialized OK");
   }
 
   // TODO - get rid of circular dependencies in internals
@@ -67,13 +81,6 @@ public:
 
   bool run()
   {
-    //initialize core here
-    LOG_PRINT_L0("Initializing core...");
-    if (!m_core.init(m_vm_HACK))
-    {
-      return false;
-    }
-    LOG_PRINT_L0("Core initialized OK");
     return true;
   }
 
@@ -84,12 +91,12 @@ public:
 
   ~t_core()
   {
-    LOG_PRINT_L0("Deinitializing core...");
+    MGINFO("Deinitializing core...");
     try {
       m_core.deinit();
       m_core.set_cryptonote_protocol(nullptr);
     } catch (...) {
-      LOG_PRINT_L0("Failed to deinitialize core...");
+      MERROR("Failed to deinitialize core...");
     }
   }
 };

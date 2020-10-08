@@ -31,6 +31,10 @@
 
 #include <boost/uuid/uuid_generators.hpp>
 #include "levin_base.h"
+#include "int-util.h"
+
+#undef MONERO_DEFAULT_LOG_CATEGORY
+#define MONERO_DEFAULT_LOG_CATEGORY "net"
 
 namespace epee
 {
@@ -40,6 +44,8 @@ namespace levin
 	struct protocl_handler_config
 	{
 		levin_commands_handler<t_connection_context>* m_pcommands_handler;
+		void (*m_pcommands_handler_destroy)(levin_commands_handler<t_connection_context>*);
+		~protocl_handler_config() { if (m_pcommands_handler && m_pcommands_handler_destroy) (*m_pcommands_handler_destroy)(m_pcommands_handler); }
 	};
 
   template<class t_connection_context = net_utils::connection_context_base>
@@ -85,7 +91,7 @@ namespace levin
 	{
 		if(!m_config.m_pcommands_handler)
 		{
-			LOG_ERROR("Command handler not set!");
+			LOG_ERROR_CC(m_conn_context, "Command handler not set!");
 			return false;
 		}
 		m_cach_in_buffer.append((const char*)ptr, cb);
@@ -98,22 +104,32 @@ namespace levin
 			case conn_state_reading_head:
 				if(m_cach_in_buffer.size() < sizeof(bucket_head))
 				{
-					if(m_cach_in_buffer.size() >= sizeof(uint64_t) && *((uint64_t*)m_cach_in_buffer.data()) != LEVIN_SIGNATURE)
+					if(m_cach_in_buffer.size() >= sizeof(uint64_t) && *((uint64_t*)m_cach_in_buffer.data()) != SWAP64LE(LEVIN_SIGNATURE))
 					{
-						LOG_ERROR("Signature missmatch on accepted connection");
+						LOG_ERROR_CC(m_conn_context, "Signature mismatch on accepted connection");
 						return false;
 					}
 					is_continue = false;
 					break;
 				}
 				{
-					bucket_head* phead = (bucket_head*)m_cach_in_buffer.data();
-					if(LEVIN_SIGNATURE != phead->m_signature)
+#if BYTE_ORDER == LITTLE_ENDIAN
+					bucket_head &phead = *(bucket_head*)m_cach_in_buffer.data();
+#else
+					bucket_head phead = *(bucket_head*)m_cach_in_buffer.data();
+					phead.m_signature = SWAP64LE(phead.m_signature);
+					phead.m_cb = SWAP64LE(phead.m_cb);
+					phead.m_command = SWAP32LE(phead.m_command);
+					phead.m_return_code = SWAP32LE(phead.m_return_code);
+					phead.m_reservedA = SWAP32LE(phead.m_reservedA);
+					phead.m_reservedB = SWAP32LE(phead.m_reservedB);
+#endif
+					if(LEVIN_SIGNATURE != phead.m_signature)
 					{
-						LOG_ERROR("Signature missmatch on accepted connection");
+						LOG_ERROR_CC(m_conn_context, "Signature mismatch on accepted connection");
 						return false;
 					}
-					m_current_head = *phead;
+					m_current_head = phead;
 				}
 				m_cach_in_buffer.erase(0, sizeof(bucket_head));
 				m_state = conn_state_reading_body;
@@ -141,10 +157,9 @@ namespace levin
 						m_current_head.m_return_code = m_config.m_pcommands_handler->invoke(m_current_head.m_command, buff_to_invoke, return_buff, m_conn_context);
 						m_current_head.m_cb = return_buff.size();
 						m_current_head.m_have_to_return_data = false;
-						std::string send_buff((const char*)&m_current_head, sizeof(m_current_head));
-						send_buff += return_buff;
 
-						if(!m_psnd_hndlr->do_send(send_buff.data(), send_buff.size()))
+						return_buff.insert(0, (const char*)&m_current_head, sizeof(m_current_head));
+						if(!m_psnd_hndlr->do_send(byte_slice{std::move(return_buff)}))
 							return false;
 
 					}
@@ -154,7 +169,7 @@ namespace levin
 				m_state = conn_state_reading_head;
 				break;
 			default:
-				LOG_ERROR("Undefined state in levin_server_impl::connection_handler, m_state=" << m_state);
+				LOG_ERROR_CC(m_conn_context, "Undefined state in levin_server_impl::connection_handler, m_state=" << m_state);
 				return false;
 			}
 		}

@@ -1,6 +1,6 @@
 // Word list created by Monero contributor Shrikez
 // 
-// Copyright (c) 2014-2016, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -51,9 +51,10 @@ namespace Language
   class Italian: public Base
   {
   public:
-    Italian()
+    Italian(): Base("Italiano", "Italian", {}, 4)
     {
-      word_list = new std::vector<std::string>({
+      static constexpr const char * const words[NWORDS] =
+      {
         "abbinare",
         "abbonato",
         "abisso",
@@ -1680,11 +1681,8 @@ namespace Language
         "zolfo",
         "zombie",
         "zucchero"
-      });
-      unique_prefix_length = 4;
-      word_map = new std::unordered_map<std::string, uint32_t>;
-      trimmed_word_map = new std::unordered_map<std::string, uint32_t>;
-      language_name = "Italian";
+      };
+      set_words(words);
       populate_maps();
     }
   };

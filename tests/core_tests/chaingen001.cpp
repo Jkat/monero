@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2016, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -35,8 +35,8 @@
 
 #include "console_handler.h"
 
-#include "cryptonote_core/cryptonote_basic.h"
-#include "cryptonote_core/cryptonote_format_utils.h"
+#include "cryptonote_basic/cryptonote_basic.h"
+#include "cryptonote_basic/cryptonote_format_utils.h"
 
 #include "chaingen.h"
 #include "chaingen_tests_list.h"
@@ -78,7 +78,7 @@ bool one_block::verify_1(cryptonote::core& c, size_t ev_index, const std::vector
     //CHECK_TEST_CONDITION(get_block_reward(0) == get_balance(alice, events, chain, mtx));
 
     // check height
-    std::list<cryptonote::block> blocks;
+    std::vector<cryptonote::block> blocks;
     std::list<crypto::public_key> outs;
     bool r = c.get_blocks(0, 100, blocks);
     //c.get_outs(100, outs);

@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2016, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 //
 // All rights reserved.
 //
@@ -31,49 +31,34 @@
 
 
 #include "include_base_utils.h"                     // LOG_PRINT_x
-#include "net/http_client.h"                        // epee::net_utils::...
-#include <boost/asio.hpp>
+#include "common/util.h"
 
 using namespace std;
 
-namespace Bitmonero {
+namespace Monero {
 namespace Utils {
 
-
-// copy-pasted from simplewallet.
-
 bool isAddressLocal(const std::string &address)
+{ 
+    try {
+        return tools::is_local_address(address);
+    } catch (const std::exception &e) {
+        MERROR("error: " << e.what());
+        return false;
+    }
+}
+
+void onStartup()
 {
-    // extract host
-    epee::net_utils::http::url_content u_c;
-    if (!epee::net_utils::parse_url(address, u_c))
-    {
-        LOG_PRINT_L1("Failed to determine whether daemon is local, assuming not");
-        return false;
-    }
-    if (u_c.host.empty())
-    {
-        LOG_PRINT_L1("Failed to determine whether daemon is local, assuming not");
-        return false;
-    }
-
-    // resolve to IP
-    boost::asio::io_service io_service;
-    boost::asio::ip::tcp::resolver resolver(io_service);
-    boost::asio::ip::tcp::resolver::query query(u_c.host, "");
-    boost::asio::ip::tcp::resolver::iterator i = resolver.resolve(query);
-    while (i != boost::asio::ip::tcp::resolver::iterator())
-    {
-        const boost::asio::ip::tcp::endpoint &ep = *i;
-        if (ep.address().is_loopback())
-            return true;
-        ++i;
-    }
-
-    return false;
+    tools::on_startup();
+#ifdef NDEBUG
+    tools::disable_core_dumps();
+#endif
 }
 
 }
 
 
 } // namespace
+
+namespace Bitmonero = Monero;

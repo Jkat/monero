@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2016, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -28,12 +28,13 @@
 // 
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-#include <mutex>
-#include <thread>
+#include <boost/thread/mutex.hpp>
+#include <boost/thread/thread.hpp>
 
 #include "include_base_utils.h"
 #include "misc_log_ex.h"
 #include "storages/levin_abstract_invoke2.h"
+#include "common/util.h"
 
 #include "net_load_tests.h"
 
@@ -58,7 +59,7 @@ namespace
 
       //std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-      std::unique_lock<std::mutex> lock(m_open_close_test_mutex);
+      boost::unique_lock<boost::mutex> lock(m_open_close_test_mutex);
       if (!m_open_close_test_conn_id.is_nil())
       {
         EXIT_ON_ERROR(m_open_close_test_helper->handle_new_connection(context.m_connection_id, true));
@@ -69,7 +70,7 @@ namespace
     {
       test_levin_commands_handler::on_connection_close(context);
 
-      std::unique_lock<std::mutex> lock(m_open_close_test_mutex);
+      boost::unique_lock<boost::mutex> lock(m_open_close_test_mutex);
       if (context.m_connection_id == m_open_close_test_conn_id)
       {
         LOG_PRINT_L0("Stop open/close test");
@@ -115,7 +116,7 @@ namespace
 
     int handle_start_open_close_test(int command, const CMD_START_OPEN_CLOSE_TEST::request& req, CMD_START_OPEN_CLOSE_TEST::response&, test_connection_context& context)
     {
-      std::unique_lock<std::mutex> lock(m_open_close_test_mutex);
+      boost::unique_lock<boost::mutex> lock(m_open_close_test_mutex);
       if (0 == m_open_close_test_helper.get())
       {
         LOG_PRINT_L0("Start open/close test (" << req.open_request_target << ", " << req.max_opened_conn_count << ")");
@@ -132,7 +133,7 @@ namespace
 
     int handle_shutdown(int command, const CMD_SHUTDOWN::request& req, test_connection_context& /*context*/)
     {
-      LOG_PRINT_L0("Got shutdown requst. Shutting down...");
+      LOG_PRINT_L0("Got shutdown request. Shutting down...");
       m_tcp_server.send_stop_signal();
       return 1;
     }
@@ -146,7 +147,7 @@ namespace
           CMD_DATA_REQUEST::request req2;
           req2.data.resize(req.request_size);
 
-          bool r = epee::net_utils::async_invoke_remote_command2<CMD_DATA_REQUEST::response>(ctx.m_connection_id, CMD_DATA_REQUEST::ID, req2,
+          bool r = epee::net_utils::async_invoke_remote_command2<CMD_DATA_REQUEST::response>(ctx, CMD_DATA_REQUEST::ID, req2,
             m_tcp_server.get_config_object(), [=](int code, const CMD_DATA_REQUEST::response& rsp, const test_connection_context&) {
               if (code <= 0)
               {
@@ -208,30 +209,31 @@ namespace
     test_tcp_server& m_tcp_server;
 
     boost::uuids::uuid m_open_close_test_conn_id;
-    std::mutex m_open_close_test_mutex;
+    boost::mutex m_open_close_test_mutex;
     std::unique_ptr<open_close_test_helper> m_open_close_test_helper;
   };
 }
 
 int main(int argc, char** argv)
 {
+  TRY_ENTRY();
+  tools::on_startup();
   //set up logging options
-  epee::log_space::get_set_log_detalisation_level(true, LOG_LEVEL_0);
-  epee::log_space::log_singletone::add_logger(LOGGER_CONSOLE, NULL, NULL);
+  mlog_configure(mlog_get_default_log_path("net_load_tests_srv.log"), true);
 
-  size_t thread_count = (std::max)(min_thread_count, std::thread::hardware_concurrency() / 2);
+  size_t thread_count = (std::max)(min_thread_count, boost::thread::hardware_concurrency() / 2);
 
   test_tcp_server tcp_server(epee::net_utils::e_connection_type_RPC);
   if (!tcp_server.init_server(srv_port, "127.0.0.1"))
     return 1;
 
-  srv_levin_commands_handler commands_handler(tcp_server);
-  tcp_server.get_config_object().m_pcommands_handler = &commands_handler;
+  srv_levin_commands_handler *commands_handler = new srv_levin_commands_handler(tcp_server);
+  tcp_server.get_config_object().set_handler(commands_handler, [](epee::levin::levin_commands_handler<test_connection_context> *handler) { delete handler; });
   tcp_server.get_config_object().m_invoke_timeout = 10000;
   //tcp_server.get_config_object().m_max_packet_size = max_packet_size;
 
   if (!tcp_server.run_server(thread_count, true))
     return 2;
-  epee::net_utils::data_logger::get_instance().kill_instance();
   return 0;
+  CATCH_ENTRY_L0("main", 1);
 }

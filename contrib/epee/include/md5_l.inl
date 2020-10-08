@@ -58,14 +58,11 @@ These notices must be retained in any copies of any part of this
 documentation and/or software.
 */
 
-/* do i need all of this just for htonl()? damn. */
-//#include <sys/types.h>
-//#include <sys/param.h>
-//#include <sys/socket.h>
-//#include <netinet/in.h>
-
-
-
+#ifdef _WIN32
+# include <winsock2.h>
+#else
+# include <arpa/inet.h>
+#endif
 #include "md5global.h"
 #include "md5_l.h"
 #include "hmac-md5.h"
@@ -280,7 +277,7 @@ namespace md5
 		/* Zeroize sensitive information.
 
 		*/
-		MD5_memset ((POINTER)context, 0, sizeof (*context)); 
+		memwipe ((POINTER)context, sizeof (*context));
 	}
 
 	/* MD5 basic transformation. Transforms state based on block.
@@ -372,7 +369,7 @@ namespace md5
 
 		/* Zeroize sensitive information.
 		*/
-		MD5_memset ((POINTER)x, 0, sizeof (x)); 
+		memwipe ((POINTER)x, sizeof (x));
 	}
 
 	/* Note: Replace "for loop" with standard memcpy if possible.
@@ -434,9 +431,9 @@ namespace md5
 		MD5Update(&hmac->octx, k_opad, 64);     /* apply outer pad */
 
 		/* scrub the pads and key context (if used) */
-		MD5_memset( (POINTER)&k_ipad, 0, sizeof(k_ipad));
-		MD5_memset( (POINTER)&k_opad, 0, sizeof(k_opad));
-		MD5_memset( (POINTER)&tk, 0, sizeof(tk));
+		memwipe( (POINTER)&k_ipad, sizeof(k_ipad));
+		memwipe( (POINTER)&k_opad, sizeof(k_opad));
+		memwipe( (POINTER)&tk, sizeof(tk));
 
 		/* and we're done. */
 	}
@@ -462,7 +459,7 @@ namespace md5
 			state->istate[lupe] = htonl(hmac.ictx.state[lupe]);
 			state->ostate[lupe] = htonl(hmac.octx.state[lupe]);
 		}
-		MD5_memset( (POINTER)&hmac, 0, sizeof(hmac));
+		memwipe( (POINTER)&hmac, sizeof(hmac));
 	}
 
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2016, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -49,9 +49,10 @@ namespace Language
   class English: public Base
   {
   public:
-    English()
+    English(): Base("English", "English", {}, 3)
     {
-      word_list = new std::vector<std::string>({
+      static constexpr const char * const words[NWORDS] =
+      {
         "abbey",
         "abducts",
         "ability",
@@ -1678,11 +1679,8 @@ namespace Language
         "zombie",
         "zones",
         "zoom"
-      });
-      unique_prefix_length = 3;
-      word_map = new std::unordered_map<std::string, uint32_t>;
-      trimmed_word_map = new std::unordered_map<std::string, uint32_t>;
-      language_name = "English";
+      };
+      set_words(words);
       populate_maps();
     }
   };

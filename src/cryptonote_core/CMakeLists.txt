@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2016, The Monero Project
+# Copyright (c) 2014-2020, The Monero Project
 #
 # All rights reserved.
 #
@@ -27,58 +27,38 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 set(cryptonote_core_sources
-  account.cpp
   blockchain.cpp
-  checkpoints.cpp
-  cryptonote_basic_impl.cpp
   cryptonote_core.cpp
-  cryptonote_format_utils.cpp
-  difficulty.cpp
-  miner.cpp
   tx_pool.cpp
-  hardfork.cpp)
+  tx_sanity_check.cpp
+  cryptonote_tx_utils.cpp)
 
 set(cryptonote_core_headers)
 
 set(cryptonote_core_private_headers
-  account.h
-  account_boost_serialization.h
   blockchain_storage_boost_serialization.h
   blockchain.h
-  checkpoints.h
-  connection_context.h
-  cryptonote_basic.h
-  cryptonote_basic_impl.h
-  cryptonote_boost_serialization.h
   cryptonote_core.h
-  cryptonote_format_utils.h
-  cryptonote_stat_info.h
-  difficulty.h
-  miner.h
-  tx_extra.h
   tx_pool.h
-  verification_context.h
-  hardfork.h)
+  tx_sanity_check.h
+  cryptonote_tx_utils.h)
 
-if(PER_BLOCK_CHECKPOINT)
-  set(Blocks "blocks")
-else()
-  set(Blocks "")
-endif()
-
-bitmonero_private_headers(cryptonote_core
-  ${crypto_private_headers})
-bitmonero_add_library(cryptonote_core
+monero_private_headers(cryptonote_core
+  ${cryptonote_core_private_headers})
+monero_add_library(cryptonote_core
   ${cryptonote_core_sources}
   ${cryptonote_core_headers}
   ${cryptonote_core_private_headers})
 target_link_libraries(cryptonote_core
   PUBLIC
+    version
     common
-    crypto
-    otshell_utils
+    cncrypto
     blockchain_db
+    multisig
     ringct
+    device
+    hardforks
     ${Boost_DATE_TIME_LIBRARY}
     ${Boost_PROGRAM_OPTIONS_LIBRARY}
     ${Boost_SERIALIZATION_LIBRARY}
@@ -86,5 +66,4 @@ target_link_libraries(cryptonote_core
     ${Boost_SYSTEM_LIBRARY}
     ${Boost_THREAD_LIBRARY}
   PRIVATE
-    ${Blocks}
     ${EXTRA_LIBRARIES})

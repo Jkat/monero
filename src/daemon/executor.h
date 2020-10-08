@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2016, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -32,7 +32,9 @@
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/variables_map.hpp>
 #include <string>
-#include <vector>
+
+#undef MONERO_DEFAULT_LOG_CATEGORY
+#define MONERO_DEFAULT_LOG_CATEGORY "daemon"
 
 namespace daemonize
 {
@@ -42,6 +44,10 @@ namespace daemonize
     typedef ::daemonize::t_daemon t_daemon;
 
     static std::string const NAME;
+
+    t_executor(uint16_t public_rpc_port = 0) : public_rpc_port(public_rpc_port)
+    {
+    }
 
     static void init_options(
         boost::program_options::options_description & configurable_options
@@ -53,8 +59,15 @@ namespace daemonize
         boost::program_options::variables_map const & vm
       );
 
+    bool run_non_interactive(
+        boost::program_options::variables_map const & vm
+      );
+
     bool run_interactive(
         boost::program_options::variables_map const & vm
       );
+
+  private:
+    uint16_t public_rpc_port;
   };
 }

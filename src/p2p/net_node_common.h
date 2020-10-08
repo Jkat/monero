@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2016, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -31,6 +31,12 @@
 #pragma once
 
 #include <boost/uuid/uuid.hpp>
+#include <utility>
+#include <vector>
+#include "cryptonote_basic/blobdatatype.h"
+#include "cryptonote_protocol/enums.h"
+#include "cryptonote_protocol/fwd.h"
+#include "net/enums.h"
 #include "net/net_utils_base.h"
 #include "p2p_protocol_defs.h"
 
@@ -43,31 +49,41 @@ namespace nodetool
   template<class t_connection_context>
   struct i_p2p_endpoint
   {
-    virtual bool relay_notify_to_all(int command, const std::string& data_buff, const epee::net_utils::connection_context_base& context)=0;
-    virtual bool invoke_command_to_peer(int command, const std::string& req_buff, std::string& resp_buff, const epee::net_utils::connection_context_base& context)=0;
-    virtual bool invoke_notify_to_peer(int command, const std::string& req_buff, const epee::net_utils::connection_context_base& context)=0;
+    virtual bool relay_notify_to_list(int command, const epee::span<const uint8_t> data_buff, std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> connections)=0;
+    virtual epee::net_utils::zone send_txs(std::vector<cryptonote::blobdata> txs, const epee::net_utils::zone origin, const boost::uuids::uuid& source, cryptonote::i_core_events& core, cryptonote::relay_method tx_relay)=0;
+    virtual bool invoke_command_to_peer(int command, const epee::span<const uint8_t> req_buff, std::string& resp_buff, const epee::net_utils::connection_context_base& context)=0;
+    virtual bool invoke_notify_to_peer(int command, const epee::span<const uint8_t> req_buff, const epee::net_utils::connection_context_base& context)=0;
     virtual bool drop_connection(const epee::net_utils::connection_context_base& context)=0;
     virtual void request_callback(const epee::net_utils::connection_context_base& context)=0;
-    virtual uint64_t get_connections_count()=0;
-    virtual void for_each_connection(std::function<bool(t_connection_context&, peerid_type)> f)=0;
-    virtual bool block_ip(uint32_t adress, time_t seconds = 0)=0;
-    virtual bool unblock_ip(uint32_t adress)=0;
-    virtual std::map<uint32_t, time_t> get_blocked_ips()=0;
-    virtual bool add_ip_fail(uint32_t adress)=0;
+    virtual uint64_t get_public_connections_count()=0;
+    virtual void for_each_connection(std::function<bool(t_connection_context&, peerid_type, uint32_t)> f)=0;
+    virtual bool for_connection(const boost::uuids::uuid&, std::function<bool(t_connection_context&, peerid_type, uint32_t)> f)=0;
+    virtual bool block_host(const epee::net_utils::network_address &address, time_t seconds = 0)=0;
+    virtual bool unblock_host(const epee::net_utils::network_address &address)=0;
+    virtual std::map<std::string, time_t> get_blocked_hosts()=0;
+    virtual std::map<epee::net_utils::ipv4_network_subnet, time_t> get_blocked_subnets()=0;
+    virtual bool add_host_fail(const epee::net_utils::network_address &address, unsigned int score = 1)=0;
+    virtual void add_used_stripe_peer(const t_connection_context &context)=0;
+    virtual void remove_used_stripe_peer(const t_connection_context &context)=0;
+    virtual void clear_used_stripe_peers()=0;
   };
 
   template<class t_connection_context>
   struct p2p_endpoint_stub: public i_p2p_endpoint<t_connection_context>
   {
-    virtual bool relay_notify_to_all(int command, const std::string& data_buff, const epee::net_utils::connection_context_base& context)
+    virtual bool relay_notify_to_list(int command, const epee::span<const uint8_t> data_buff, std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> connections)
     {
       return false;
     }
-    virtual bool invoke_command_to_peer(int command, const std::string& req_buff, std::string& resp_buff, const epee::net_utils::connection_context_base& context)
+    virtual epee::net_utils::zone send_txs(std::vector<cryptonote::blobdata> txs, const epee::net_utils::zone origin, const boost::uuids::uuid& source, cryptonote::i_core_events& core, cryptonote::relay_method tx_relay)
+    {
+      return epee::net_utils::zone::invalid;
+    }
+    virtual bool invoke_command_to_peer(int command, const epee::span<const uint8_t> req_buff, std::string& resp_buff, const epee::net_utils::connection_context_base& context)
     {
       return false;
     }
-    virtual bool invoke_notify_to_peer(int command, const std::string& req_buff, const epee::net_utils::connection_context_base& context)
+    virtual bool invoke_notify_to_peer(int command, const epee::span<const uint8_t> req_buff, const epee::net_utils::connection_context_base& context)
     {
       return true;
     }
@@ -79,30 +95,47 @@ namespace nodetool
     {
 
     }
-    virtual void for_each_connection(std::function<bool(t_connection_context&,peerid_type)> f)
+    virtual void for_each_connection(std::function<bool(t_connection_context&,peerid_type,uint32_t)> f)
     {
 
     }
-
-    virtual uint64_t get_connections_count()    
+    virtual bool for_connection(const boost::uuids::uuid&, std::function<bool(t_connection_context&,peerid_type,uint32_t)> f)
     {
       return false;
     }
-    virtual bool block_ip(uint32_t adress, time_t seconds)
+
+    virtual uint64_t get_public_connections_count()    
+    {
+      return false;
+    }
+    virtual bool block_host(const epee::net_utils::network_address &address, time_t seconds)
     {
       return true;
     }
-    virtual bool unblock_ip(uint32_t adress)
+    virtual bool unblock_host(const epee::net_utils::network_address &address)
     {
       return true;
     }
-    virtual std::map<uint32_t, time_t> get_blocked_ips()
+    virtual std::map<std::string, time_t> get_blocked_hosts()
     {
-      return std::map<uint32_t, time_t>();
+      return std::map<std::string, time_t>();
     }
-    virtual bool add_ip_fail(uint32_t adress)
+    virtual std::map<epee::net_utils::ipv4_network_subnet, time_t> get_blocked_subnets()
+    {
+      return std::map<epee::net_utils::ipv4_network_subnet, time_t>();
+    }
+    virtual bool add_host_fail(const epee::net_utils::network_address &address, unsigned int score)
     {
       return true;
+    }
+    virtual void add_used_stripe_peer(const t_connection_context &context)
+    {
+    }
+    virtual void remove_used_stripe_peer(const t_connection_context &context)
+    {
+    }
+    virtual void clear_used_stripe_peers()
+    {
     }
   };
 }

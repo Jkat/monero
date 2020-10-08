@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2016, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -30,14 +30,23 @@
 
 #pragma once 
 
-#include <mutex>
+#include <boost/thread/locks.hpp>
+#include <boost/thread/mutex.hpp>
+#include <boost/optional.hpp>
 #include <system_error>
-#include <boost/filesystem.hpp>
+#include <csignal>
+#include <cstdio>
+#include <functional>
+#include <memory>
+#include <string>
 
-#include "crypto/crypto.h"
+#ifdef _WIN32
+#include "windows.h"
+#include "misc_log_ex.h"
+#endif
+
 #include "crypto/hash.h"
-#include "misc_language.h"
-#include "p2p/p2p_protocol_defs.h"
+#include "cryptonote_config.h"
 
 /*! \brief Various Tools
  *
@@ -46,6 +55,57 @@
  */
 namespace tools
 {
+  //! Functional class for closing C file handles.
+  struct close_file
+  {
+    void operator()(std::FILE* handle) const noexcept
+    {
+      if (handle)
+      {
+        std::fclose(handle);
+      }
+    }
+  };
+
+  //! A file restricted to process owner AND process. Deletes file on destruction.
+  class private_file {
+    std::unique_ptr<std::FILE, close_file> m_handle;
+    std::string m_filename;
+
+    private_file(std::FILE* handle, std::string&& filename) noexcept;
+  public:
+
+    //! `handle() == nullptr && filename.empty()`.
+    private_file() noexcept;
+
+    /*! \return File only readable by owner and only used by this process
+      OR `private_file{}` on error. */
+    static private_file create(std::string filename);
+
+    private_file(private_file&&) = default;
+    private_file& operator=(private_file&&) = default;
+
+    //! Deletes `filename()` and closes `handle()`.
+    ~private_file() noexcept;
+
+    std::FILE* handle() const noexcept { return m_handle.get(); }
+    const std::string& filename() const noexcept { return m_filename; }
+  };
+
+  class file_locker
+  {
+  public:
+    file_locker(const std::string &filename);
+    ~file_locker();
+    bool locked() const;
+  private:
+#ifdef WIN32
+    HANDLE m_fd;
+#else
+    int m_fd;
+#endif
+  };
+
   /*! \brief Returns the default data directory.
    *
    * \details Windows < Vista: C:\\Documents and Settings\\Username\\Application Data\\CRYPTONOTE_NAME
@@ -86,17 +146,13 @@ namespace tools
   bool create_directories_if_necessary(const std::string& path);
   /*! \brief std::rename wrapper for nix and something strange for windows.
    */
-  std::error_code replace_file(const std::string& replacement_name, const std::string& replaced_name);
+  std::error_code replace_file(const std::string& old_name, const std::string& new_name);
 
   bool sanitize_locale();
 
-  inline crypto::hash get_proof_of_trust_hash(const nodetool::proof_of_trust& pot)
-  {
-    std::string s;
-    s.append(reinterpret_cast<const char*>(&pot.peer_id), sizeof(pot.peer_id));
-    s.append(reinterpret_cast<const char*>(&pot.time), sizeof(pot.time));
-    return crypto::cn_fast_hash(s.data(), s.size());
-  }
+  bool disable_core_dumps();
+
+  bool on_startup();
 
   /*! \brief Defines a signal handler for win32 and *nix
    */
@@ -115,9 +171,14 @@ namespace tools
       }
       return r;
 #else
-      /* Only blocks SIGINT and SIGTERM */
-      signal(SIGINT, posix_handler);
+      static struct sigaction sa;
+      memset(&sa, 0, sizeof(struct sigaction));
+      sa.sa_handler = posix_handler;
+      sa.sa_flags = 0;
+      /* Only blocks SIGINT, SIGTERM and SIGPIPE */
+      sigaction(SIGINT, &sa, NULL);
       signal(SIGTERM, posix_handler);
+      signal(SIGPIPE, SIG_IGN);
       m_handler = t;
       return true;
 #endif
@@ -134,7 +195,7 @@ namespace tools
       }
       else
       {
-        LOG_PRINT_RED_L0("Got control signal " << type << ". Exiting without saving...");
+        MGINFO_RED("Got control signal " << type << ". Exiting without saving...");
         return FALSE;
       }
       return TRUE;
@@ -161,6 +222,37 @@ namespace tools
 
   void set_strict_default_file_permissions(bool strict);
 
+  ssize_t get_lockable_memory();
+
   void set_max_concurrency(unsigned n);
   unsigned get_max_concurrency();
+
+  bool is_local_address(const std::string &address);
+  int vercmp(const char *v0, const char *v1); // returns < 0, 0, > 0, similar to strcmp, but more human friendly than lexical - does not attempt to validate
+
+  bool sha256sum(const uint8_t *data, size_t len, crypto::hash &hash);
+  bool sha256sum(const std::string &filename, crypto::hash &hash);
+
+  boost::optional<bool> is_hdd(const char *path);
+
+  boost::optional<std::pair<uint32_t, uint32_t>> parse_subaddress_lookahead(const std::string& str);
+
+  std::string glob_to_regex(const std::string &val);
+#ifdef _WIN32
+  std::string input_line_win();
+#endif
+
+  void closefrom(int fd);
+
+  std::string get_human_readable_timestamp(uint64_t ts);
+
+  std::string get_human_readable_timespan(uint64_t seconds);
+
+  std::string get_human_readable_bytes(uint64_t bytes);
+
+  void clear_screen();
+
+  std::vector<std::pair<std::string, size_t>> split_string_by_width(const std::string &s, size_t columns);
+
+  uint64_t cumulative_block_sync_weight(cryptonote::network_type nettype, uint64_t start_block, uint64_t num_blocks);
 }

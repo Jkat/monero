@@ -29,17 +29,26 @@
 #ifndef _STRING_TOOLS_H_
 #define _STRING_TOOLS_H_
 
-//#include <objbase.h>
+// Previously pulled in by ASIO, further cleanup still required ...
+#ifdef _WIN32
+# include <winsock2.h>
+# include <windows.h>
+#endif
+
+#include <string.h>
 #include <locale>
 #include <cstdlib>
-#include <iomanip>
-//#include <strsafe.h>
-#include <boost/uuid/uuid.hpp>
-#include <boost/uuid/uuid_io.hpp>
+#include <string>
+#include <type_traits>
 #include <boost/lexical_cast.hpp>
-#include <boost/asio.hpp>
-#include <boost/algorithm/string/compare.hpp>
-#include <boost/algorithm/string.hpp>
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/utility/string_ref.hpp>
+#include "misc_log_ex.h"
+#include "storages/parserse_base_utils.h"
+#include "hex.h"
+#include "memwipe.h"
+#include "mlocker.h"
+#include "span.h"
 #include "warnings.h"
 
 
@@ -55,133 +64,15 @@ namespace epee
 {
 namespace string_tools
 {
-	inline std::wstring get_str_from_guid(const boost::uuids::uuid& rid)
-	{
-		return boost::lexical_cast<std::wstring>(rid);
-	}
-	//----------------------------------------------------------------------------
-	inline std::string get_str_from_guid_a(const boost::uuids::uuid& rid)
-	{
-		return boost::lexical_cast<std::string>(rid);
-	}
-	//----------------------------------------------------------------------------
-	inline bool get_guid_from_string( boost::uuids::uuid& inetifer, std::wstring str_id)
-	{
-		if(str_id.size() < 36)
-			return false;
-
-		if('{' == *str_id.begin())
-			str_id.erase(0, 1);
-
-		if('}' == *(--str_id.end()))
-			str_id.erase(--str_id.end());
-
-		try
-		{
-			inetifer = boost::lexical_cast<boost::uuids::uuid>(str_id);
-			return true;
-		}
-		catch(...)
-		{
-			return false;
-		}
-	}
-	//----------------------------------------------------------------------------
-	inline bool get_guid_from_string(OUT boost::uuids::uuid& inetifer, const std::string& str_id)
-	{
-		std::string local_str_id = str_id;
-		if(local_str_id.size() < 36)
-			return false;
-
-		if('{' == *local_str_id.begin())
-			local_str_id.erase(0, 1);
-
-		if('}' == *(--local_str_id.end()))
-			local_str_id.erase(--local_str_id.end());
-
-		try
-		{
-			inetifer = boost::lexical_cast<boost::uuids::uuid>(local_str_id);
-			return true;
-		}
-		catch(...)
-		{
-			return false;
-		}
-	}
-	//----------------------------------------------------------------------------
-  template<class CharT>
-  std::basic_string<CharT> buff_to_hex(const std::basic_string<CharT>& s)
+  //----------------------------------------------------------------------------
+  inline std::string buff_to_hex_nodelimer(const std::string& src)
   {
-    using namespace std;
-    basic_stringstream<CharT> hexStream;
-    hexStream << hex << noshowbase << setw(2);
-
-    for(typename std::basic_string<CharT>::const_iterator it = s.begin(); it != s.end(); it++)
-    {
-      hexStream << "0x"<< static_cast<unsigned int>(static_cast<unsigned char>(*it)) << " ";
-    }
-    return hexStream.str();
+    return to_hex::string(to_byte_span(to_span(src)));
   }
   //----------------------------------------------------------------------------
-  template<class CharT>
-  std::basic_string<CharT> buff_to_hex_nodelimer(const std::basic_string<CharT>& s)
+  inline bool parse_hexstr_to_binbuff(const boost::string_ref s, std::string& res)
   {
-    using namespace std;
-    basic_stringstream<CharT> hexStream;
-    hexStream << hex << noshowbase;
-
-    for(typename std::basic_string<CharT>::const_iterator it = s.begin(); it != s.end(); it++)
-    {
-      hexStream << setw(2) << setfill('0') << static_cast<unsigned int>(static_cast<unsigned char>(*it));
-    }
-    return hexStream.str();
-  }
-  //----------------------------------------------------------------------------
-  template<class CharT>
-  bool parse_hexstr_to_binbuff(const std::basic_string<CharT>& s, std::basic_string<CharT>& res, bool allow_partial_byte = false)
-  {
-    res.clear();
-    if (!allow_partial_byte && (s.size() & 1))
-      return false;
-    try
-    {
-      long v = 0;
-      for(size_t i = 0; i < (s.size() + 1) / 2; i++)
-      {
-        CharT byte_str[3];
-        size_t copied = s.copy(byte_str, 2, 2 * i);
-        byte_str[copied] = CharT(0);
-        CharT* endptr;
-        v = strtoul(byte_str, &endptr, 16);
-        if (v < 0 || 0xFF < v || endptr != byte_str + copied)
-        {
-          return false;
-        }
-        res.push_back(static_cast<unsigned char>(v));
-      }
-
-      return true;
-    }catch(...)
-    {
-      return false;
-    }
-  }
-  //----------------------------------------------------------------------------
-  template<class t_pod_type>
-  bool parse_tpod_from_hex_string(const std::string& str_hash, t_pod_type& t_pod)
-  {
-    std::string buf;
-    bool res = epee::string_tools::parse_hexstr_to_binbuff(str_hash, buf);
-    if (!res || buf.size() != sizeof(t_pod_type))
-    {
-      return false;
-    }
-    else
-    {
-      buf.copy(reinterpret_cast<char *>(&t_pod), sizeof(t_pod_type));
-      return true;
-    }
+    return from_hex::to_string(res, s);
   }
   //----------------------------------------------------------------------------
 PUSH_WARNINGS
@@ -193,7 +84,7 @@ DISABLE_GCC_WARNING(maybe-uninitialized)
     {
       for (char c : str_id)
       {
-        if (!std::isdigit(c))
+        if (!epee::misc_utils::parse::isdigit(c))
           return false;
       }
     }
@@ -203,7 +94,7 @@ DISABLE_GCC_WARNING(maybe-uninitialized)
       val = boost::lexical_cast<XType>(str_id);
       return true;
     }
-    catch(std::exception& /*e*/)
+    catch(const std::exception& /*e*/)
     {
       //const char* pmsg = e.what();
       return false;
@@ -216,22 +107,6 @@ DISABLE_GCC_WARNING(maybe-uninitialized)
     return true;
   }
 POP_WARNINGS
-	//---------------------------------------------------
-	template<typename int_t>
-	bool get_xnum_from_hex_string(const std::string str, int_t& res )
-	{
-		try
-		{
-			std::stringstream ss;
-			ss << std::hex << str;
-			ss >> res;
-			return true;	
-		}
-		catch(...)
-		{
-			return false;
-		}
-	}
 	//----------------------------------------------------------------------------
 	template<class XType>
 	inline bool xtype_to_string(const  XType& val, std::string& str)
@@ -247,106 +122,12 @@ POP_WARNINGS
 
 		return true;
 	}
-    
-	typedef std::map<std::string, std::string> command_line_params_a;
-	typedef std::map<std::wstring, std::wstring> command_line_params_w;
-
-	template<class t_string>
-	bool parse_commandline(std::map<t_string, t_string>& res, int argc, char** argv)
-	{
-    t_string key;
-    for(int i = 1; i < argc; i++)
-    {
-      if(!argv[i])
-        break;
-      t_string s = argv[i];
-      std::string::size_type p = s.find('=');
-      if(std::string::npos == p)
-      {
-        res[s] = "";
-      }else
-      {
-        std::string ss;
-        t_string nm = s.substr(0, p);
-        t_string vl = s.substr(p+1, s.size());
-        res[nm] = vl;
-      }
-    }
-    return true;
-	}
-
-/*  template<typename t_type>
-  bool get_xparam_from_command_line(const std::map<std::string, std::string>& res, const std::basic_string<typename t_string::value_type> & key, t_type& val)
-  {
-
-  }
-  */
-
-	template<class t_string, typename t_type>
-	bool get_xparam_from_command_line(const std::map<t_string, t_string>& res, const t_string & key, t_type& val)
-	{
-		typename std::map<t_string, t_string>::const_iterator it = res.find(key);
-		if(it == res.end())
-			return false;
-
-		if(it->second.size())
-		{
-			return get_xtype_from_string(val, it->second);
-		}
-
-		return true;
-	}
-
-    template<class t_string, typename t_type>
-    t_type get_xparam_from_command_line(const std::map<t_string, t_string>& res, const t_string & key, const t_type& default_value)
-    {
-        typename std::map<t_string, t_string>::const_iterator it = res.find(key);
-        if(it == res.end())
-            return default_value;
-
-        if(it->second.size())
-        {
-            t_type s;
-            get_xtype_from_string(s, it->second);
-            return s;
-        }
-
-        return default_value;
-    }
-
-  template<class t_string>
-  bool have_in_command_line(const std::map<t_string, t_string>& res, const std::basic_string<typename t_string::value_type>& key)
-  {
-    typename std::map<t_string, t_string>::const_iterator it = res.find(key);
-    if(it == res.end())
-      return false;
-
-    return true;
-  }
-
 	//----------------------------------------------------------------------------
-//#ifdef _WINSOCK2API_
-	inline std::string get_ip_string_from_int32(uint32_t ip)
-	{
-		in_addr adr;
-		adr.s_addr = ip;
-		const char* pbuf = inet_ntoa(adr);
-		if(pbuf)
-			return pbuf;
-		else
-			return "[failed]";
-	}
+	std::string get_ip_string_from_int32(uint32_t ip);
 	//----------------------------------------------------------------------------
-	inline bool get_ip_int32_from_string(uint32_t& ip, const std::string& ip_str)
-	{
-		ip = inet_addr(ip_str.c_str());
-		if(INADDR_NONE == ip)
-			return false;
-
-		return true;
-	}
+	bool get_ip_int32_from_string(uint32_t& ip, const std::string& ip_str);
   //----------------------------------------------------------------------------
-  inline bool parse_peer_from_string(uint32_t& ip, uint32_t& port, const std::string& addres)
+  inline bool parse_peer_from_string(uint32_t& ip, uint16_t& port, const std::string& addres)
   {
     //parse ip and address
     std::string::size_type p = addres.find(':');
@@ -374,17 +155,6 @@ POP_WARNINGS
     return true;
   }
 
-//#endif
-	//----------------------------------------------------------------------------
-  template<typename t>
-	inline std::string get_t_as_hex_nwidth(const t& v, std::streamsize w = 8)
-  {
-    std::stringstream ss;
-    ss << std::setfill ('0') << std::setw (w) << std::hex << std::noshowbase;
-    ss << v;
-    return ss.str();
-  }
-
 	inline std::string num_to_string_fast(int64_t val)
 	{
 		/*
@@ -394,100 +164,22 @@ POP_WARNINGS
 		return boost::lexical_cast<std::string>(val);
 	}
 	//----------------------------------------------------------------------------
-	inline bool string_to_num_fast(const std::string& buff, int64_t& val)
+	template<typename T>
+	inline std::string to_string_hex(const T &val)
 	{
-		//return get_xtype_from_string(val, buff);
-#if (defined _MSC_VER)
-    val = _atoi64(buff.c_str());
-#else
-    val = atoll(buff.c_str());
-#endif
-		/*
-		 * val = atoi64(buff.c_str());
-     */
-		if(buff != "0" && val == 0)
-			return false;
-		return true;
+		static_assert(std::is_arithmetic<T>::value, "only arithmetic types");
+		std::stringstream ss;
+		ss << std::hex << val;
+		std::string s;
+		ss >> s;
+		return s;
 	}
-	//----------------------------------------------------------------------------
-	inline bool string_to_num_fast(const std::string& buff, int& val)
-	{
-		val = atoi(buff.c_str());
-		if(buff != "0" && val == 0)
-			return false;
-
-		return true;
-	}
-	//----------------------------------------------------------------------------
-#ifdef WINDOWS_PLATFORM
-	inline std::string system_time_to_string(const SYSTEMTIME& st)
-	{
-	
-		/*
-		TIME_ZONE_INFORMATION tzi;
-		GetTimeZoneInformation(&tzi);
-		SystemTimeToTzSpecificLocalTime(&tzi, &stUTC, &stLocal);
-		*/
-
-		char szTime[25], szDate[25];
-		::GetTimeFormatA(
-			LOCALE_USER_DEFAULT,    // locale
-			TIME_FORCE24HOURFORMAT, // options
-			&st,					// time
-			NULL,                   // time format string
-			szTime,                 // formatted string buffer
-			25                      // size of string buffer
-			);
-
-		::GetDateFormatA(
-			LOCALE_USER_DEFAULT,    // locale
-			NULL,                   // options
-			&st,					// date
-			NULL,                   // date format
-			szDate,                 // formatted string buffer
-			25                      // size of buffer
-			);
-		szTime[24] = szDate[24] = 0; //be happy :)
-		
-		std::string res = szDate;
-		(res += " " )+= szTime;
-		return res; 
-
-	}
-#endif
 	//----------------------------------------------------------------------------
 	
 	inline bool compare_no_case(const std::string& str1, const std::string& str2)
 	{
 		
 		return !boost::iequals(str1, str2);
-	}
-	//----------------------------------------------------------------------------
-	inline bool compare_no_case(const std::wstring& str1, const std::wstring& str2)
-	{
-		return !boost::iequals(str1, str2);
-	}
-	//----------------------------------------------------------------------------
-	inline bool is_match_prefix(const std::wstring& str1, const std::wstring& prefix)
-	{	
-		if(prefix.size()>str1.size())
-			return false;
-
-		if(!compare_no_case(str1.substr(0, prefix.size()), prefix))
-			return true;
-		else
-			return false;
-	}
-	//----------------------------------------------------------------------------
-	inline bool is_match_prefix(const std::string& str1, const std::string& prefix)
-	{	
-		if(prefix.size()>str1.size())
-			return false;
-
-		if(!compare_no_case(str1.substr(0, prefix.size()), prefix))
-			return true;
-		else
-			return false;
 	}
 	//----------------------------------------------------------------------------
 	inline std::string& get_current_module_name()
@@ -567,29 +259,45 @@ POP_WARNINGS
     return str;
   }
   //----------------------------------------------------------------------------
-  template<class t_pod_type>
-  std::string pod_to_hex(const t_pod_type& s)
+  inline std::string pad_string(std::string s, size_t n, char c = ' ', bool prepend = false)
   {
-    std::string buff;
-    buff.assign(reinterpret_cast<const char*>(&s), sizeof(s));
-    return buff_to_hex_nodelimer(buff);
+    if (s.size() < n)
+    {
+      if (prepend)
+        s = std::string(n - s.size(), c) + s;
+      else
+        s.append(n - s.size(), c);
+    }
+    return s;
   }
   //----------------------------------------------------------------------------
   template<class t_pod_type>
-  bool hex_to_pod(const std::string& hex_str, t_pod_type& s)
+  std::string pod_to_hex(const t_pod_type& s)
   {
-    std::string hex_str_tr = trim(hex_str);
-    if(sizeof(s)*2 != hex_str.size())
-      return false;
-    std::string bin_buff;
-    if(!parse_hexstr_to_binbuff(hex_str_tr, bin_buff))
-      return false;
-    if(bin_buff.size()!=sizeof(s))
-      return false;
-
-    s = *(t_pod_type*)bin_buff.data();
-    return true;
+    static_assert(std::is_standard_layout<t_pod_type>(), "expected standard layout type");
+    return to_hex::string(as_byte_span(s));
   }
+  //----------------------------------------------------------------------------
+  template<class t_pod_type>
+  bool hex_to_pod(const boost::string_ref hex_str, t_pod_type& s)
+  {
+    static_assert(std::is_standard_layout<t_pod_type>(), "expected standard layout type");
+    return from_hex::to_buffer(as_mut_byte_span(s), hex_str);
+  }
+  //----------------------------------------------------------------------------
+  template<class t_pod_type>
+  bool hex_to_pod(const boost::string_ref hex_str, tools::scrubbed<t_pod_type>& s)
+  {
+    return hex_to_pod(hex_str, unwrap(s));
+  }
+  //----------------------------------------------------------------------------
+  template<class t_pod_type>
+  bool hex_to_pod(const boost::string_ref hex_str, epee::mlocked<t_pod_type>& s)
+  {
+    return hex_to_pod(hex_str, unwrap(s));
+  }
+  //----------------------------------------------------------------------------
+  bool validate_hex(uint64_t length, const std::string& str);
   //----------------------------------------------------------------------------
 	inline std::string get_extension(const std::string& str)
 	{
@@ -602,20 +310,6 @@ POP_WARNINGS
 		return res;
 	}
 	//----------------------------------------------------------------------------
-	inline std::string get_filename_from_path(const std::string& str)
-	{
-		std::string res;
-		std::string::size_type pos = str.rfind('\\');
-		if(std::string::npos == pos)
-			return str;
-
-		res = str.substr(pos+1, str.size()-pos);
-		return res;
-	}
-	//----------------------------------------------------------------------------
-
-
-
 	inline std::string cut_off_extension(const std::string& str)
 	{
 		std::string res;
@@ -626,126 +320,40 @@ POP_WARNINGS
 		res = str.substr(0, pos);
 		return res;
 	}
-
-	//----------------------------------------------------------------------------
-#ifdef _WININET_
-	inline std::string get_string_from_systemtime(const SYSTEMTIME& sys_time)
-	{
-		std::string result_string;
-
-		char buff[100] = {0};
-		BOOL res = ::InternetTimeFromSystemTimeA(&sys_time, INTERNET_RFC1123_FORMAT, buff, 99);
-		if(!res)
-		{
-			LOG_ERROR("Failed to load SytemTime to string");
-		}
-
-		result_string = buff;
-		return result_string;
-
-	}
-	//-------------------------------------------------------------------------------------
-	inline SYSTEMTIME get_systemtime_from_string(const std::string& buff)
-	{
-		SYSTEMTIME result_time = {0};
-
-		BOOL res = ::InternetTimeToSystemTimeA(buff.c_str(), &result_time, NULL);
-		if(!res)
-		{
-			LOG_ERROR("Failed to load SytemTime from string " << buff << "interval set to 15 minutes");
-		}
-
-		return result_time;
-	}
-#endif
-
-#ifdef WINDOWS_PLATFORM
-	static const DWORD INFO_BUFFER_SIZE = 10000;
-
-	static const wchar_t* get_pc_name()
-	{
-		static wchar_t	info[INFO_BUFFER_SIZE];
-		static DWORD	bufCharCount = INFO_BUFFER_SIZE;
-		static bool		init = false;
-
-		if (!init) {
-			if (!GetComputerNameW( info, &bufCharCount ))
-				info[0] = 0;
-			else
-				init = true;
-		}
-
-		return info;
-	}
-
-	static const wchar_t* get_user_name()
-	{
-		static wchar_t	info[INFO_BUFFER_SIZE];
-		static DWORD	bufCharCount = INFO_BUFFER_SIZE;
-		static bool		init = false;
-
-		if (!init) {
-			if (!GetUserNameW( info, &bufCharCount ))
-				info[0] = 0;
-			else
-				init = true;
-		}
-
-		return info;
-	}
-#endif
-
-#ifdef _LM_
-	static const wchar_t* get_domain_name()
-	{
-		static wchar_t	info[INFO_BUFFER_SIZE];
-		static DWORD	bufCharCount = 0;
-		static bool		init = false;
-
-		if (!init) {
-			LPWSTR domain( NULL );
-			NETSETUP_JOIN_STATUS status;
-			info[0] = 0;
-
-			if (NET_API_STATUS result = NetGetJoinInformation( NULL, &domain, &status )) 
-			{
-				LOG_ERROR("get_domain_name error: " << log_space::get_win32_err_descr(result));
-			} else
-			{
-				StringCchCopyW( info, sizeof(info)/sizeof( info[0] ), domain );
-				NetApiBufferFree((void*)domain);
-				init = true;
-			}
-		}
-
-		return info;
-	}
-#endif
-#ifdef WINDOWS_PLATFORM
-	inline
-	std::string load_resource_string_a(int id, const char* pmodule_name = NULL)
-	{
-		//slow realization 
-		HMODULE h = ::GetModuleHandleA( pmodule_name );
-		
-		char buff[2000] = {0};
-		
-		::LoadStringA( h, id, buff, sizeof(buff));
-		buff[sizeof(buff)-1] = 0; //be happy :)
-		return buff;
-	}
-	inline
-	std::wstring load_resource_string_w(int id, const char* pmodule_name = NULL)
-	{
-		//slow realization 
-		HMODULE h = ::GetModuleHandleA( pmodule_name );
-		
-		wchar_t buff[2000] = {0};
-		
-		::LoadStringW( h, id, buff, sizeof(buff) / sizeof( buff[0] ) );
-		buff[(sizeof(buff)/sizeof(buff[0]))-1] = 0; //be happy :)
-		return buff;	
-	}
+  //----------------------------------------------------------------------------
+#ifdef _WIN32
+  inline std::wstring utf8_to_utf16(const std::string& str)
+  {
+    if (str.empty())
+      return {};
+    int wstr_size = MultiByteToWideChar(CP_UTF8, 0, &str[0], str.size(), NULL, 0);
+    if (wstr_size == 0)
+    {
+      throw std::runtime_error(std::error_code(GetLastError(), std::system_category()).message());
+    }
+    std::wstring wstr(wstr_size, wchar_t{});
+    if (!MultiByteToWideChar(CP_UTF8, 0, &str[0], str.size(), &wstr[0], wstr_size))
+    {
+      throw std::runtime_error(std::error_code(GetLastError(), std::system_category()).message());
+    }
+    return wstr;
+  }
+  inline std::string utf16_to_utf8(const std::wstring& wstr)
+  {
+    if (wstr.empty())
+      return {};
+    int str_size = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], wstr.size(), NULL, 0, NULL, NULL);
+    if (str_size == 0)
+    {
+      throw std::runtime_error(std::error_code(GetLastError(), std::system_category()).message());
+    }
+    std::string str(str_size, char{});
+    if (!WideCharToMultiByte(CP_UTF8, 0, &wstr[0], wstr.size(), &str[0], str_size, NULL, NULL))
+    {
+      throw std::runtime_error(std::error_code(GetLastError(), std::system_category()).message());
+    }
+    return str;
+  }
 #endif
 }
 }

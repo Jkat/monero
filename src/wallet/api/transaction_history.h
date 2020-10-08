@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2016, The Monero Project
+// Copyright (c) 2014-2020, The Monero Project
 //
 // All rights reserved.
 //
@@ -28,11 +28,11 @@
 //
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-#include "wallet/wallet2_api.h"
+#include "wallet/api/wallet2_api.h"
+#include <boost/thread/shared_mutex.hpp>
 
-namespace Bitmonero {
+namespace Monero {
 
-class TransactionInfo;
 class WalletImpl;
 
 class TransactionHistoryImpl : public TransactionHistory
@@ -51,7 +51,10 @@ private:
     // TransactionHistory is responsible of memory management
     std::vector<TransactionInfo*> m_history;
     WalletImpl *m_wallet;
+    mutable boost::shared_mutex   m_historyMutex;
 };
 
 }
+
+namespace Bitmonero = Monero;
 

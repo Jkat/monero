@@ -33,13 +33,15 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-// OS X, FreeBSD, and OpenBSD don't need malloc.h
-#if !defined(__APPLE__) && !defined(__FreeBSD__) && !defined(__OpenBSD__)
+// OS X, FreeBSD, OpenBSD and NetBSD don't need malloc.h
+#if !defined(__APPLE__) && !defined(__FreeBSD__) && !defined(__OpenBSD__) \
+  && !defined(__DragonFly__) && !defined(__NetBSD__)
  #include <malloc.h>
 #endif
 
-// FreeBSD, and OpenBSD also don't need timeb.h
-#if !defined(__FreeBSD__) && !defined(__OpenBSD__)
+// ANDROID, FreeBSD, OpenBSD and NetBSD also don't need timeb.h
+#if !defined(__FreeBSD__) && !defined(__OpenBSD__) && !defined(__ANDROID__) \
+  && !defined(__NetBSD__)
  #include <sys/timeb.h>
 #else
  #include <sys/time.h>
@@ -50,6 +52,12 @@
 #else
 #include <sys/types.h>
 #include <unistd.h>
+#endif
+
+#ifdef _MSC_VER
+#define GETPID() _getpid()
+#else
+#define GETPID() getpid()
 #endif
 
 #include "oaes_config.h"
@@ -466,7 +474,7 @@ OAES_RET oaes_sprintf(
 #ifdef OAES_HAVE_ISAAC
 static void oaes_get_seed( char buf[RANDSIZ + 1] )
 {
-        #if !defined(__FreeBSD__) && !defined(__OpenBSD__)
+        #if !defined(__FreeBSD__) && !defined(__OpenBSD__) && !defined(__NetBSD__)
 	struct timeb timer;
 	struct tm *gmTimer;
 	char * _test = NULL;
@@ -477,7 +485,7 @@ static void oaes_get_seed( char buf[RANDSIZ + 1] )
 	sprintf( buf, "%04d%02d%02d%02d%02d%02d%03d%p%d",
 		gmTimer->tm_year + 1900, gmTimer->tm_mon + 1, gmTimer->tm_mday,
 		gmTimer->tm_hour, gmTimer->tm_min, gmTimer->tm_sec, timer.millitm,
-		_test + timer.millitm, getpid() );
+		_test + timer.millitm, GETPID() );
 	#else
 	struct timeval timer;
 	struct tm *gmTimer;
@@ -489,7 +497,7 @@ static void oaes_get_seed( char buf[RANDSIZ + 1] )
 	sprintf( buf, "%04d%02d%02d%02d%02d%02d%03d%p%d",
 		gmTimer->tm_year + 1900, gmTimer->tm_mon + 1, gmTimer->tm_mday,
 		gmTimer->tm_hour, gmTimer->tm_min, gmTimer->tm_sec, timer.tv_usec/1000,
-		_test + timer.tv_usec/1000, getpid() );
+		_test + timer.tv_usec/1000, GETPID() );
 	#endif
 		
 	if( _test )
@@ -498,7 +506,7 @@ static void oaes_get_seed( char buf[RANDSIZ + 1] )
 #else
 static uint32_t oaes_get_seed(void)
 {
-        #if !defined(__FreeBSD__) && !defined(__OpenBSD__)
+        #if !defined(__FreeBSD__) && !defined(__OpenBSD__) && !defined(__ANDROID__) && !defined(__NetBSD__)
 	struct timeb timer;
 	struct tm *gmTimer;
 	char * _test = NULL;
@@ -509,7 +517,7 @@ static uint32_t oaes_get_seed(void)
 	_test = (char *) calloc( sizeof( char ), timer.millitm );
 	_ret = gmTimer->tm_year + 1900 + gmTimer->tm_mon + 1 + gmTimer->tm_mday +
 			gmTimer->tm_hour + gmTimer->tm_min + gmTimer->tm_sec + timer.millitm +
-			(uintptr_t) ( _test + timer.millitm ) + getpid();
+			(uintptr_t) ( _test + timer.millitm ) + GETPID();
 	#else
 	struct timeval timer;
 	struct tm *gmTimer;
@@ -521,7 +529,7 @@ static uint32_t oaes_get_seed(void)
 	_test = (char *) calloc( sizeof( char ), timer.tv_usec/1000 );
 	_ret = gmTimer->tm_year + 1900 + gmTimer->tm_mon + 1 + gmTimer->tm_mday +
 			gmTimer->tm_hour + gmTimer->tm_min + gmTimer->tm_sec + timer.tv_usec/1000 +
-			(uintptr_t) ( _test + timer.tv_usec/1000 ) + getpid();
+			(uintptr_t) ( _test + timer.tv_usec/1000 ) + GETPID();
 	#endif
 
 	if( _test )
@@ -639,7 +647,10 @@ static OAES_RET oaes_key_gen( OAES_CTX * ctx, size_t key_size )
 	_key->data = (uint8_t *) calloc( key_size, sizeof( uint8_t ));
 	
 	if( NULL == _key->data )
+	{
+		free( _key );
 		return OAES_RET_MEM;
+	}
 	
 	for( _i = 0; _i < key_size; _i++ )
 #ifdef OAES_HAVE_ISAAC
